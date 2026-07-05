@@ -6,7 +6,8 @@ const { generarMazo, barajar } = require('./cartas');
 
 // ── Estado inicial ────────────────────────────────────────────
 function crearEstadoInicial(jugadores) {
-  const mazo = barajar(generarMazo());
+  // Barajar 3 veces para máxima aleatoriedad
+  let mazo = barajar(barajar(barajar(generarMazo())));
   const cartasPorJugador = jugadores.length === 2 ? 10 : 7;
 
   const estadoJugadores = {};
@@ -21,32 +22,45 @@ function crearEstadoInicial(jugadores) {
     };
   }
 
-  // Repartir cartas iniciales
+  // Repartir cartas iniciales con límite de 2 ingredientes máximo al inicio
   for (const j of jugadores) {
-    for (let i = 0; i < cartasPorJugador; i++) {
-      const carta = mazo.pop();
-      if (carta) {
-        esBoti(carta)
-          ? estadoJugadores[j.id].cubierta.push(carta)
-          : estadoJugadores[j.id].mano.push(carta);
-      }
-    }
-    // Si tiene 3+ ingredientes al inicio → redistribuir
-    const ings = estadoJugadores[j.id].cubierta.filter(c => c.tipo === 'boti_sagrat');
-    if (ings.length >= 3) {
-      [...estadoJugadores[j.id].cubierta, ...estadoJugadores[j.id].mano]
-        .forEach(c => mazo.unshift(c));
-      estadoJugadores[j.id].cubierta = [];
-      estadoJugadores[j.id].mano = [];
+    let intentos = 0;
+    const MAX_INTENTOS = 5;
+
+    const repartir = () => {
+      const mano = [];
+      const cubierta = [];
+      const cartasRobadas = [];
+
       for (let i = 0; i < cartasPorJugador; i++) {
         const carta = mazo.pop();
-        if (carta) {
-          esBoti(carta)
-            ? estadoJugadores[j.id].cubierta.push(carta)
-            : estadoJugadores[j.id].mano.push(carta);
-        }
+        if (carta) cartasRobadas.push(carta);
       }
+
+      for (const carta of cartasRobadas) {
+        if (esBoti(carta)) cubierta.push(carta);
+        else mano.push(carta);
+      }
+
+      return { mano, cubierta, cartasRobadas };
+    };
+
+    let resultado = repartir();
+
+    // Si tiene más de 2 ingredientes, volver a barajar y repartir
+    while (
+      resultado.cubierta.filter(c => c.tipo === 'boti_sagrat').length > 2 &&
+      intentos < MAX_INTENTOS
+    ) {
+      // Devolver cartas al mazo y volver a barajar
+      mazo.push(...resultado.cartasRobadas);
+      mazo = barajar(mazo);
+      resultado = repartir();
+      intentos++;
     }
+
+    estadoJugadores[j.id].mano = resultado.mano;
+    estadoJugadores[j.id].cubierta = resultado.cubierta;
   }
 
   // Quién empieza: menos tesoros, luego menos ingredientes
